@@ -1,22 +1,11 @@
 from __future__ import annotations
-import calendar
-import os
-from pathlib import Path
+
 from datetime import datetime, date, timedelta
-import io, zipfile, math, requests
+import zipfile
+import requests
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
-from matplotlib.backends.backend_pdf import PdfPages
 import streamlit as st
-from math import isfinite, isnan
-import numpy as np
-import re, unicodedata
 from zoneinfo import ZoneInfo
-import plotly.graph_objects as go
-import locale, urllib3
-import matplotlib.dates as mdates
-import warnings
 
 # ------------------ Configuración ------------------
 MES_TXT_TITLE = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
