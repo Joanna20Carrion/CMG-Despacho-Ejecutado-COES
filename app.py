@@ -8,8 +8,8 @@ import streamlit as st
 from zoneinfo import ZoneInfo
 
 # ------------------ Configuración ------------------
-MES_TXT_TITLE = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-MES_TXT = ["ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO","JULIO","AGOSTO","SETIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"]
+MES_TXT_TITLE = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Setiembre", "Octubre", "Noviembre", "Diciembre"]
+MES_TXT = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Setiembre", "Octubre", "Noviembre", "Diciembre"]
 
 base_ieod = ("https://www.coes.org.pe/portal/browser/download?"
              "url=Post%20Operaci%C3%B3n%2FReportes%2FIEOD%2F"
@@ -354,4 +354,4 @@ if gen_generar:
     with st.spinner("Renderizando en pantalla…"):
         render_graficos_en_pantalla(ini=ini, fin=fin)
 
-st.caption("© Reporte CMG y Despacho Ejecutado - USGE") 
+st.caption("© Reporte CMG y Despacho Ejecutado - USGE")
