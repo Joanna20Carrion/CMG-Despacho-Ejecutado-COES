@@ -342,6 +342,10 @@ def render_graficos_en_pantalla(ini: date, fin: date):
             # ── Aplicar orden deseado ──
             df_final = reordenar_despacho(df_raw_final)
 
+            # Eliminar filas de totales diarios (HORA vacía = fila de suma)
+            if "HORA" in df_final.columns:
+                df_final = df_final[df_final["HORA"].notna()].reset_index(drop=True)
+
             st.dataframe(df_final, use_container_width=True)
 
             # ── Descarga Despacho ──
