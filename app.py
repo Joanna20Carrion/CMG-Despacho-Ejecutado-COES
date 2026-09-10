@@ -340,7 +340,13 @@ def render_graficos_en_pantalla(ini: date, fin: date):
             df_raw_final = pd.concat(resultados, ignore_index=True)
 
             # ── Detectar centrales nuevas (no están en ORDEN_CENTRALES) ──
-            norm_orden = {_norm(c) for c in ORDEN_CENTRALES}
+            norm_orden = (
+                {_norm(c) for c in ORDEN_CENTRALES}           # nombres en la lista
+                | {_norm(k) for k in ALIAS_CENTRALES.keys()}  # "MCH TUPURI" etc.
+                | {_norm(v) for v in ALIAS_CENTRALES.values()} # "TUPURI" etc.
+                | {_norm("FENIX GT11"), _norm("FENIX GT12"),   # FENIX fragmentado
+                   _norm("FENIX "), _norm("FENIX .1")}
+            )
             norm_excluir = COLS_EXCLUIR | {
                 _norm("FECHA"), _norm("COL_1"), _norm("HORA"),
                 _norm("Unnamed: 0"), _norm("GT11"), _norm("GT12"),
