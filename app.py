@@ -339,6 +339,26 @@ def render_graficos_en_pantalla(ini: date, fin: date):
         else:
             df_raw_final = pd.concat(resultados, ignore_index=True)
 
+            # ── Detectar centrales nuevas (no están en ORDEN_CENTRALES) ──
+            norm_orden = {_norm(c) for c in ORDEN_CENTRALES}
+            norm_excluir = COLS_EXCLUIR | {
+                _norm("FECHA"), _norm("COL_1"), _norm("HORA"),
+                _norm("Unnamed: 0"), _norm("GT11"), _norm("GT12"),
+            }
+            nuevas_centrales = []
+            for col in df_raw_final.columns:
+                central = col.split("|", 1)[1].strip() if "|" in col else col
+                cn = _norm(central)
+                if cn not in norm_orden and cn not in norm_excluir:
+                    nuevas_centrales.append(central)
+
+            if nuevas_centrales:
+                st.warning(
+                    "⚠️ **Centrales nuevas detectadas** — se agregaron automáticamente al final de la tabla. "
+                    "Si quieres ubicarlas en una posición específica, agrégalas a `ORDEN_CENTRALES` en el código:\n\n"
+                    + "\n".join(f"- `{c}`" for c in sorted(nuevas_centrales))
+                )
+
             # ── Aplicar orden deseado ──
             df_final = reordenar_despacho(df_raw_final)
 
