@@ -65,53 +65,65 @@ def _norm(s: str) -> str:
     return " ".join(str(s).replace("\t", " ").split()).upper()
 
 
+# Columnas a descartar completamente del output
+COLS_EXCLUIR = {
+    _norm("POTENCIA ACTIVA EJECUTADA DE LAS UNIDADES DE GENERACIÓN DEL SEIN (MW)"),
+    _norm("MW"),
+    _norm("Unnamed: 0"),
+}
+
+
 def reordenar_despacho(df: pd.DataFrame) -> pd.DataFrame:
     """
     Recibe el df con columnas 'EMPRESA | CENTRAL' y FECHA,
-    devuelve un df con FECHA + columnas en ORDEN_CENTRALES.
+    devuelve un df con FECHA + HORA + columnas en ORDEN_CENTRALES.
     Las columnas del orden que no existan quedan como NaN.
-    Las columnas del export que no estén en el orden van al final.
+    Columnas excluidas (totales SEIN, MW, índice) se descartan.
     """
     # Mapeo norm(central) → nombre_columna_real_en_df
     central_map: dict[str, str] = {}
     for col in df.columns:
         central = col.split("|", 1)[1].strip() if "|" in col else col
-        # normalizar quitando tab
         central_norm = _norm(central)
         central_map[central_norm] = col
 
-    # FENIX: columnas rotas por tab → mapear por nombre limpio
-    # "FENIX POWER PERÚ | FENIX \tGT11" se lee como "FENIX POWER PERÚ | FENIX " + col suelta "GT11"
-    # Reasignamos manualmente buscando la col que termina en "| FENIX " (sin GT)
+    # FENIX: columnas rotas por tab
     for col in df.columns:
         if col.endswith("| FENIX "):
             central_map[_norm("FENIX GT11")] = col
         if col.endswith("| FENIX .1"):
             central_map[_norm("FENIX GT12")] = col
 
-    # Columnas ya usadas (para no repetirlas en el "resto")
+    # Columnas ya usadas (para no repetirlas)
     usadas: set[str] = set()
 
+    # FECHA + HORA (COL_1 renombrada) al inicio
     ordered_cols: list[str] = ["FECHA"]
     usadas.add("FECHA")
 
+    # Insertar COL_1 como HORA si existe
+    col1_real = central_map.get(_norm("COL_1")) or (
+        "COL_1" if "COL_1" in df.columns else None
+    )
+    if col1_real and col1_real in df.columns:
+        ordered_cols.append(f"__HORA__{col1_real}")
+        usadas.add(col1_real)
+
     for desired in ORDEN_CENTRALES:
         key = _norm(desired)
-        # probar alias
         alias_key = _norm(ALIAS_CENTRALES.get(desired, desired))
-
         col_found = central_map.get(key) or central_map.get(alias_key)
 
         if col_found and col_found not in usadas:
             ordered_cols.append(col_found)
             usadas.add(col_found)
         else:
-            # columna faltante → insertar columna vacía con el nombre deseado
             ordered_cols.append(f"__MISSING__{desired}")
 
-    # Columnas del export que no estaban en el orden → al final
+    # Columnas sobrantes (no en orden ni excluidas) → al final
     for col in df.columns:
-        if col not in usadas and col != "FECHA":
+        col_norm = _norm(col.split("|", 1)[1].strip() if "|" in col else col)
+        if col not in usadas and col_norm not in COLS_EXCLUIR:
             ordered_cols.append(col)
 
     # Construir df final
@@ -120,6 +132,11 @@ def reordenar_despacho(df: pd.DataFrame) -> pd.DataFrame:
         if col.startswith("__MISSING__"):
             label = col[len("__MISSING__"):]
             result_frames.append(pd.Series([None] * len(df), name=label))
+        elif col.startswith("__HORA__"):
+            real_col = col[len("__HORA__"):]
+            s = df[real_col].copy()
+            s.name = "HORA"
+            result_frames.append(s)
         else:
             s = df[col].copy()
             # Renombrar: solo la parte de la central (sin empresa)
