@@ -346,6 +346,10 @@ def render_graficos_en_pantalla(ini: date, fin: date):
             if "HORA" in df_final.columns:
                 df_final = df_final[df_final["HORA"].notna()].reset_index(drop=True)
 
+            # Reemplazar None/NaN por 0 en columnas de centrales (no en FECHA ni HORA)
+            cols_datos = [c for c in df_final.columns if c not in ("FECHA", "HORA")]
+            df_final[cols_datos] = df_final[cols_datos].fillna(0)
+
             st.dataframe(df_final, use_container_width=True)
 
             # ── Descarga Despacho ──
