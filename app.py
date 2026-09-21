@@ -239,12 +239,20 @@ def render_graficos_en_pantalla(ini: date, fin: date):
                         pass
 
                 if datetime_col:
-                    mask = (
+                    mask_2359 = (
                         (df_final[datetime_col].dt.hour == 23) &
                         (df_final[datetime_col].dt.minute == 59)
                     )
-                    df_final.loc[mask, datetime_col] = (
-                        df_final.loc[mask, datetime_col] + pd.Timedelta(minutes=1)
+                    df_final.loc[mask_2359, datetime_col] = (
+                        df_final.loc[mask_2359, datetime_col] + pd.Timedelta(minutes=1)
+                    )
+                    # Sincronizar FECHA con la fecha del datetime corregido (medianoche)
+                    mask_midnight = (
+                        (df_final[datetime_col].dt.hour == 0) &
+                        (df_final[datetime_col].dt.minute == 0)
+                    )
+                    df_final.loc[mask_midnight, "FECHA"] = (
+                        df_final.loc[mask_midnight, datetime_col].dt.date
                     )
 
                 st.dataframe(df_final, use_container_width=True)
@@ -373,14 +381,20 @@ def render_graficos_en_pantalla(ini: date, fin: date):
 
             # ── Corregir 23:59 → 00:00 del día siguiente (Despacho) ──
             if "HORA" in df_final.columns:
-                dt_combinado = pd.to_datetime(
-                    df_final["FECHA"].astype(str) + " " + df_final["HORA"].astype(str),
-                    errors="coerce"
-                )
-                mask = (dt_combinado.dt.hour == 23) & (dt_combinado.dt.minute == 59)
-                dt_combinado.loc[mask] = dt_combinado.loc[mask] + pd.Timedelta(minutes=1)
-                df_final["FECHA"] = dt_combinado.dt.date
-                df_final["HORA"]  = dt_combinado.dt.strftime("%H:%M")
+                # Normalizar HORA a formato HH:MM
+                def normalizar_hora(h):
+                    try:
+                        partes = str(h).strip().split(":")
+                        return f"{int(partes[0]):02d}:{int(partes[1]):02d}"
+                    except Exception:
+                        return str(h)
+                df_final["HORA"] = df_final["HORA"].apply(normalizar_hora)
+                # Fila 00:00 → pertenece al día siguiente
+                mask_midnight = df_final["HORA"] == "00:00"
+                df_final.loc[mask_midnight, "FECHA"] = (
+                    pd.to_datetime(df_final.loc[mask_midnight, "FECHA"].astype(str))
+                    + pd.Timedelta(days=1)
+                ).dt.date
 
             st.dataframe(df_final, use_container_width=True)
 
