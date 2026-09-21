@@ -53,19 +53,16 @@ ORDEN_CENTRALES = [
     "CASA GRANDE","EXPANSIÓN INTIPAMPA","COENERGY","SUNNY EXPANSION","WAYRA SOLAR","SAN JOSE",
 ]
 
-# Alias: nombre en la lista → nombre que puede aparecer en el export (distinto)
 ALIAS_CENTRALES = {
     "MCH TUPURI": "TUPURI",
-    "8AGOSTO":    "8AGOSTO",   # el export ya lo tiene así
+    "8AGOSTO":    "8AGOSTO",
 }
 
 
 def _norm(s: str) -> str:
-    """Normaliza para comparar: mayúsculas, sin tabs, sin espacios dobles."""
     return " ".join(str(s).replace("\t", " ").split()).upper()
 
 
-# Columnas a descartar completamente del output
 COLS_EXCLUIR = {
     _norm("POTENCIA ACTIVA EJECUTADA DE LAS UNIDADES DE GENERACIÓN DEL SEIN (MW)"),
     _norm("MW"),
@@ -74,34 +71,22 @@ COLS_EXCLUIR = {
 
 
 def reordenar_despacho(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Recibe el df con columnas 'EMPRESA | CENTRAL' y FECHA,
-    devuelve un df con FECHA + HORA + columnas en ORDEN_CENTRALES.
-    Las columnas del orden que no existan quedan como NaN.
-    Columnas excluidas (totales SEIN, MW, índice) se descartan.
-    """
-    # Mapeo norm(central) → nombre_columna_real_en_df
     central_map: dict[str, str] = {}
     for col in df.columns:
         central = col.split("|", 1)[1].strip() if "|" in col else col
         central_norm = _norm(central)
         central_map[central_norm] = col
 
-    # FENIX: columnas rotas por tab
     for col in df.columns:
         if col.endswith("| FENIX "):
             central_map[_norm("FENIX GT11")] = col
         if col.endswith("| FENIX .1"):
             central_map[_norm("FENIX GT12")] = col
 
-    # Columnas ya usadas (para no repetirlas)
     usadas: set[str] = set()
-
-    # FECHA + HORA (COL_1 renombrada) al inicio
     ordered_cols: list[str] = ["FECHA"]
     usadas.add("FECHA")
 
-    # Insertar COL_1 como HORA si existe
     col1_real = central_map.get(_norm("COL_1")) or (
         "COL_1" if "COL_1" in df.columns else None
     )
@@ -120,13 +105,11 @@ def reordenar_despacho(df: pd.DataFrame) -> pd.DataFrame:
         else:
             ordered_cols.append(f"__MISSING__{desired}")
 
-    # Columnas sobrantes (no en orden ni excluidas) → al final
     for col in df.columns:
         col_norm = _norm(col.split("|", 1)[1].strip() if "|" in col else col)
         if col not in usadas and col_norm not in COLS_EXCLUIR:
             ordered_cols.append(col)
 
-    # Construir df final
     result_frames = []
     for col in ordered_cols:
         if col.startswith("__MISSING__"):
@@ -139,10 +122,8 @@ def reordenar_despacho(df: pd.DataFrame) -> pd.DataFrame:
             result_frames.append(s)
         else:
             s = df[col].copy()
-            # Renombrar: solo la parte de la central (sin empresa)
             if "|" in col:
                 label = col.split("|", 1)[1].strip()
-                # Limpiar tab del nombre FENIX
                 label = " ".join(label.replace("\t", " ").split())
             else:
                 label = col
@@ -154,11 +135,9 @@ def reordenar_despacho(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def df_a_xlsx(df: pd.DataFrame) -> bytes:
-    """Convierte un DataFrame a bytes xlsx (sin fórmulas, listo para download)."""
     buf = BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="Despacho Ejecutado")
-        # Ajustar ancho de columnas automáticamente
         ws = writer.sheets["Despacho Ejecutado"]
         for col_cells in ws.columns:
             max_len = max(
@@ -169,8 +148,6 @@ def df_a_xlsx(df: pd.DataFrame) -> bytes:
     return buf.getvalue()
 
 
-# -----------------------------------------------------------------------------
-# ------------------------------- PANTALLA ------------------------------------
 # -----------------------------------------------------------------------------
 def render_graficos_en_pantalla(ini: date, fin: date):
     tab1, tab2 = st.tabs(["CMG", "Despacho Ejecutado"])
@@ -247,9 +224,31 @@ def render_graficos_en_pantalla(ini: date, fin: date):
                 cols = ["FECHA"] + [c for c in df_final.columns if c != "FECHA"]
                 df_final = df_final[cols]
 
+                # ── Corregir 23:59 → 00:00 del día siguiente (CMG) ──
+                datetime_col = None
+                for col in df_final.columns:
+                    if col == "FECHA":
+                        continue
+                    try:
+                        parsed = pd.to_datetime(df_final[col], errors="coerce")
+                        if parsed.notna().sum() > len(df_final) * 0.8:
+                            datetime_col = col
+                            df_final[col] = parsed
+                            break
+                    except Exception:
+                        pass
+
+                if datetime_col:
+                    mask = (
+                        (df_final[datetime_col].dt.hour == 23) &
+                        (df_final[datetime_col].dt.minute == 59)
+                    )
+                    df_final.loc[mask, datetime_col] = (
+                        df_final.loc[mask, datetime_col] + pd.Timedelta(minutes=1)
+                    )
+
                 st.dataframe(df_final, use_container_width=True)
 
-                # ── Descarga CMG ──
                 c1, c2 = st.columns([1, 1])
                 with c1:
                     st.download_button(
@@ -339,12 +338,11 @@ def render_graficos_en_pantalla(ini: date, fin: date):
         else:
             df_raw_final = pd.concat(resultados, ignore_index=True)
 
-            # ── Detectar centrales nuevas (no están en ORDEN_CENTRALES) ──
             norm_orden = (
-                {_norm(c) for c in ORDEN_CENTRALES}           # nombres en la lista
-                | {_norm(k) for k in ALIAS_CENTRALES.keys()}  # "MCH TUPURI" etc.
-                | {_norm(v) for v in ALIAS_CENTRALES.values()} # "TUPURI" etc.
-                | {_norm("FENIX GT11"), _norm("FENIX GT12"),   # FENIX fragmentado
+                {_norm(c) for c in ORDEN_CENTRALES}
+                | {_norm(k) for k in ALIAS_CENTRALES.keys()}
+                | {_norm(v) for v in ALIAS_CENTRALES.values()}
+                | {_norm("FENIX GT11"), _norm("FENIX GT12"),
                    _norm("FENIX "), _norm("FENIX .1")}
             )
             norm_excluir = COLS_EXCLUIR | {
@@ -365,20 +363,27 @@ def render_graficos_en_pantalla(ini: date, fin: date):
                     + "\n".join(f"- `{c}`" for c in sorted(nuevas_centrales))
                 )
 
-            # ── Aplicar orden deseado ──
             df_final = reordenar_despacho(df_raw_final)
 
-            # Eliminar filas de totales diarios (HORA vacía = fila de suma)
             if "HORA" in df_final.columns:
                 df_final = df_final[df_final["HORA"].notna()].reset_index(drop=True)
 
-            # Reemplazar None/NaN por 0 en columnas de centrales (no en FECHA ni HORA)
             cols_datos = [c for c in df_final.columns if c not in ("FECHA", "HORA")]
             df_final[cols_datos] = df_final[cols_datos].fillna(0)
 
+            # ── Corregir 23:59 → 00:00 del día siguiente (Despacho) ──
+            if "HORA" in df_final.columns:
+                dt_combinado = pd.to_datetime(
+                    df_final["FECHA"].astype(str) + " " + df_final["HORA"].astype(str),
+                    errors="coerce"
+                )
+                mask = (dt_combinado.dt.hour == 23) & (dt_combinado.dt.minute == 59)
+                dt_combinado.loc[mask] = dt_combinado.loc[mask] + pd.Timedelta(minutes=1)
+                df_final["FECHA"] = dt_combinado.dt.date
+                df_final["HORA"]  = dt_combinado.dt.strftime("%H:%M")
+
             st.dataframe(df_final, use_container_width=True)
 
-            # ── Descarga Despacho ──
             c1, c2 = st.columns([1, 1])
             with c1:
                 st.download_button(
@@ -395,8 +400,6 @@ def render_graficos_en_pantalla(ini: date, fin: date):
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 )
 
-# -----------------------------------------------------------------------------
-# --------------------------------- CONFIG ------------------------------------
 # -----------------------------------------------------------------------------
 st.set_page_config(
     page_title="Reporte CMG y Despacho Ejecutado",
